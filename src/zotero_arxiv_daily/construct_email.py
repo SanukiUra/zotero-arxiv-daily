@@ -1,5 +1,6 @@
 from .protocol import Paper
 import math
+from html import escape as _html_escape
 
 
 framework = """
@@ -129,3 +130,72 @@ def render_email(papers:list[Paper]) -> str:
 
     content = '<br>' + '</br><br>'.join(parts) + '</br>'
     return framework.replace('__CONTENT__', content)
+
+
+TELEGRAM_MAX_LEN = 4096
+
+
+def _format_telegram_paper(p: Paper) -> str:
+    title = _html_escape(p.title or "Untitled")
+    author_list = list(p.authors or [])
+    if len(author_list) <= 5:
+        authors = ', '.join(author_list)
+    else:
+        authors = ', '.join(author_list[:3] + ['...'] + author_list[-2:])
+    authors = _html_escape(authors) if authors else 'Unknown authors'
+
+    if p.affiliations:
+        affiliations = p.affiliations[:5]
+        affiliations_text = ', '.join(affiliations)
+        if len(p.affiliations) > 5:
+            affiliations_text += ', ...'
+    else:
+        affiliations_text = 'Unknown Affiliation'
+    affiliations_text = _html_escape(affiliations_text)
+
+    rate = round(p.score, 1) if p.score is not None else 'Unknown'
+    tldr = _html_escape(p.tldr or p.abstract or '')
+    pdf_url = p.pdf_url or p.url or ''
+
+    lines = [f"<b>{title}</b>"]
+    lines.append(f"<i>{authors}</i>")
+    lines.append(f"<i>{affiliations_text}</i>")
+    lines.append(f"<b>Relevance:</b> {rate}")
+    lines.append(f"<b>TLDR:</b> {tldr}")
+    if pdf_url:
+        lines.append(f'<a href="{_html_escape(pdf_url, quote=True)}">PDF</a>')
+    return '\n'.join(lines)
+
+
+def render_telegram_messages(papers: list[Paper], max_len: int = TELEGRAM_MAX_LEN) -> list[str]:
+    """Render papers as a list of Telegram messages, each under Telegram's 4096-char limit.
+
+    Returns at least one message; an empty paper list yields a single "No papers" notice.
+    """
+    if not papers:
+        return ["<b>No Papers Today. Take a Rest!</b>"]
+
+    blocks = [_format_telegram_paper(p) for p in papers]
+    separator = '\n\n'
+    messages: list[str] = []
+    current = ''
+    for block in blocks:
+        candidate = block if not current else current + separator + block
+        if len(candidate) <= max_len:
+            current = candidate
+            continue
+        if current:
+            messages.append(current)
+            current = ''
+        if len(block) <= max_len:
+            current = block
+        else:
+            for i in range(0, len(block), max_len):
+                chunk = block[i : i + max_len]
+                if i + max_len >= len(block):
+                    current = chunk
+                else:
+                    messages.append(chunk)
+    if current:
+        messages.append(current)
+    return messages

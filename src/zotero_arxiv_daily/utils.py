@@ -2,7 +2,12 @@ import tarfile
 import re
 import glob
 import math
+import json as _json
 import smtplib
+import urllib.parse
+import urllib.request
+import urllib.error
+import time
 from collections import Counter
 from email.header import Header
 from email.mime.text import MIMEText
@@ -169,3 +174,46 @@ def send_email(config:DictConfig, html:str):
     server.login(sender, password)
     server.sendmail(sender, [receiver], msg.as_string())
     server.quit()
+
+
+def send_telegram(config: DictConfig, messages: list[str]) -> None:
+    """Send a list of pre-rendered messages to a Telegram chat via the Bot API.
+
+    Each element of ``messages`` is sent as a separate Telegram message. Caller
+    is responsible for keeping each message under Telegram's 4096-char limit.
+    """
+    bot_token = config.telegram.bot_token
+    chat_id = config.telegram.chat_id
+    parse_mode = getattr(config.telegram, "parse_mode", "HTML") or "HTML"
+    disable_preview = bool(getattr(config.telegram, "disable_web_page_preview", True))
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    for idx, text in enumerate(messages):
+        payload = {
+            "chat_id": str(chat_id),
+            "text": text,
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": disable_preview,
+        }
+        data = urllib.parse.urlencode(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method="POST")
+
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    body = resp.read().decode("utf-8", errors="ignore")
+                parsed = _json.loads(body) if body else {}
+                if not parsed.get("ok", False):
+                    raise RuntimeError(f"Telegram API error: {parsed}")
+                last_err = None
+                break
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+                last_err = RuntimeError(f"Telegram HTTP {e.code}: {err_body}")
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+                last_err = e
+            time.sleep(2 ** attempt)
+        if last_err is not None:
+            logger.error(f"Failed to send Telegram message {idx + 1}/{len(messages)}: {last_err}")
+            raise last_err

@@ -33,6 +33,8 @@ def _base_config():
                 "email.smtp_server=localhost",
                 "email.smtp_port=1025",
                 "email.sender_password=test",
+                "telegram.bot_token=test-bot-token",
+                "telegram.chat_id=12345",
                 "llm.api.key=sk-fake",
                 "llm.api.base_url=http://localhost:30000/v1",
                 "llm.generation_kwargs.model=gpt-4o-mini",
@@ -44,6 +46,7 @@ def _base_config():
                 "executor.reranker=api",
                 "executor.debug=false",
                 "executor.send_empty=false",
+                "executor.notifier=email",
             ],
         )
     return cfg

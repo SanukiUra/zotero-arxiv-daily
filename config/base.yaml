@@ -14,11 +14,17 @@ source:
     category: null # The categories of target medrxiv papers. Find categories from [here](https://www.medrxiv.org/) Example: ["psychiatry and clinical psychology", "neurology"]
 
 email:
-  sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
-  receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
-  smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
-  smtp_port: ??? # The port of SMTP server. Example: 465
-  sender_password: ??? # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
+  sender: null # The email account of the SMTP server that sends you email. Required when notifier.type=email. Example: abc@qq.com
+  receiver: null # The email account that receives the paper list. Required when notifier.type=email. Example: abc@outlook.com
+  smtp_server: null # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
+  smtp_port: null # The port of SMTP server. Example: 465
+  sender_password: null # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
+
+telegram:
+  bot_token: null # Telegram bot token from @BotFather. Required when notifier.type=telegram. Example: 123456:ABC-DEF...
+  chat_id: null # Telegram chat ID receiving the messages. Required when notifier.type=telegram. Example: 123456789
+  parse_mode: HTML # Message parse mode (HTML or MarkdownV2). HTML is recommended.
+  disable_web_page_preview: true # Whether to suppress link previews in messages.
 
 llm:
   api:
@@ -45,7 +51,8 @@ reranker:
 
 executor:
   debug: false # Whether to use debug mode. Example: true
-  send_empty: false # Whether to send an empty email even if no new papers today. Example: true
-  max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
+  send_empty: false # Whether to send a notification even if no new papers today. Example: true
+  max_paper_num: 100 # The maximum number of the papers presented in the notification. Example: 100
   source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv']
   reranker: local # The reranker to use. Example: 'local' or 'api'
+  notifier: telegram # Where to send results. 'telegram' (default) or 'email'.

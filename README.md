@@ -22,14 +22,15 @@
     <br> 
 </p>
 
-> [!IMPORTANT]
-> Please keep an eye on this repo, and merge your forked repo in time when there is any update of this upstream, in order to enjoy new features and fix found bugs.
+## 🍴 Fork Version
+
+This is a fork version of [original repo](https://github.com/TideDra/zotero-arxiv-daily). This fork branch allows you to receive notifications via a custom telegram bot.
 
 ## 🧐 About <a name = "about"></a>
 
 > Track new scientific researches of your interest by just forking (and staring) this repo!😊
 
-*Zotero-arXiv-Daily* finds arxiv papers that may attract you based on the context of your Zotero library, and then sends the result to your mailbox📮. It can be deployed as Github Action Workflow with **zero cost**, **no installation**, and **few configuration** of Github Action environment variables for daily **automatic** delivery.
+*Zotero-arXiv-Daily* finds arxiv papers that may attract you based on the context of your Zotero library, and then sends the result to your **Telegram bot** (default) or **e-mail inbox**📮. It can be deployed as Github Action Workflow with **zero cost**, **no installation**, and **few configuration** of Github Action environment variables for daily **automatic** delivery.
 
 ## ✨ Features
 - Totally free! All the calculation can be done in the Github Action runner locally within its quota (for public repo).
@@ -56,17 +57,40 @@
 2. Set Github Action environment variables.
 ![secrets](./assets/secrets.png)
 
-Below are all the secrets you need to set. They are invisible to anyone including you once they are set, for security.
+The secrets you need depend on which notifier you pick (Telegram is the default). Set only the rows for your chosen channel.
+
+**Always required:**
 
 | Key |Description | Example |
 | :---  | :---  | :--- |
 | ZOTERO_ID  | User ID of your Zotero account. **User ID is not your username, but a sequence of numbers**Get your ID from [here](https://www.zotero.org/settings/security). You can find it at the position shown in this [screenshot](https://github.com/TideDra/zotero-arxiv-daily/blob/main/assets/userid.png). | 12345678  |
 | ZOTERO_KEY | An Zotero API key with read access. Get a key from [here](https://www.zotero.org/settings/security).  | AB5tZ877P2j7Sm2Mragq041H   |
+| OPENAI_API_KEY | API Key when using the API to access LLMs. You can get FREE API for using advanced open source LLMs in [SiliconFlow](https://cloud.siliconflow.cn/i/b3XhBRAm). | sk-xxx |
+| OPENAI_API_BASE | API URL when using the API to access LLMs. | https://api.siliconflow.cn/v1 |
+| EMBED_API_KEY | Embedding API key for the `api` reranker. SiliconFlow's `BAAI/bge-m3` is free and multilingual. If you already use SiliconFlow for the LLM you can reuse the same key here. | sk-xxx |
+| EMBED_API_BASE | Embedding API base URL. Defaults to SiliconFlow if unset. | https://api.siliconflow.cn/v1 |
+| EMBED_MODEL | Embedding model name. | BAAI/bge-m3 |
+
+**Required when `executor.notifier=telegram` (default):**
+
+| Key | Description | Example |
+| :--- | :--- | :--- |
+| TELEGRAM_BOT_TOKEN | Token returned by [@BotFather](https://t.me/BotFather) after `/newbot`. | `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11` |
+| TELEGRAM_CHAT_ID | Numeric chat ID the bot will post to. For a personal chat: open [@userinfobot](https://t.me/userinfobot). For a group: add the bot to the group, send any message, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and read `result[].message.chat.id`. Group IDs are negative. | `123456789` or `-1001234567890` |
+
+**Required when `executor.notifier=email`:**
+
+| Key |Description | Example |
+| :---  | :---  | :--- |
 | SENDER | The email account of the SMTP server that sends you email. | abc@qq.com |
 | SENDER_PASSWORD | The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this.   | abcdefghijklmn |
 | RECEIVER | The e-mail address that receives the paper list. | abc@outlook.com |
-| OPENAI_API_KEY | API Key when using the API to access LLMs. You can get FREE API for using advanced open source LLMs in [SiliconFlow](https://cloud.siliconflow.cn/i/b3XhBRAm). | sk-xxx |
-| OPENAI_API_BASE | API URL when using the API to access LLMs. | https://api.siliconflow.cn/v1 |
+
+#### Setting up the Telegram bot
+
+1. Open [@BotFather](https://t.me/BotFather), send `/newbot`, follow the prompts. Save the token it gives you as `TELEGRAM_BOT_TOKEN`.
+2. Start a chat with your new bot (or add it to a group) and send it any message — without this step the bot cannot send you anything.
+3. Grab your chat ID and save it as `TELEGRAM_CHAT_ID`.
 
 Then you should also set a public variable `CUSTOM_CONFIG` for your custom configuration.
 ![vars](./assets/repo_var.png)
@@ -78,12 +102,18 @@ zotero:
   api_key: ${oc.env:ZOTERO_KEY}
   include_path: null # Or e.g. ["2026/survey/**", "2026/reading-group/**"]
 
+# Telegram is the default notifier. Required when executor.notifier=telegram.
+telegram:
+  bot_token: ${oc.env:TELEGRAM_BOT_TOKEN,null}
+  chat_id: ${oc.env:TELEGRAM_CHAT_ID,null}
+
+# Email is optional. Required only when executor.notifier=email.
 email:
-  sender: ${oc.env:SENDER}
-  receiver: ${oc.env:RECEIVER}
+  sender: ${oc.env:SENDER,null}
+  receiver: ${oc.env:RECEIVER,null}
   smtp_server: smtp.qq.com
   smtp_port: 465
-  sender_password: ${oc.env:SENDER_PASSWORD}
+  sender_password: ${oc.env:SENDER_PASSWORD,null}
 
 llm:
   api:
@@ -91,6 +121,13 @@ llm:
     base_url: ${oc.env:OPENAI_API_BASE}
   generation_kwargs:
     model: gpt-4o-mini
+
+reranker:
+  api:
+    key: ${oc.env:EMBED_API_KEY}
+    base_url: ${oc.env:EMBED_API_BASE,https://api.siliconflow.cn/v1}
+    model: ${oc.env:EMBED_MODEL,BAAI/bge-m3}
+    batch_size: 32
 
 source:
   arxiv:
@@ -100,8 +137,10 @@ source:
 executor:
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']
+  reranker: api # 'api' uses an embeddings endpoint (no model download); 'local' uses sentence-transformers
+  notifier: telegram # 'telegram' (default) or 'email'
 ```
-Set `source.arxiv.include_cross_list: true` if you want cross-listed papers included.
+Set `executor.notifier: email` if you'd rather receive results by e-mail. Set `source.arxiv.include_cross_list: true` if you want cross-listed papers included.
 >[!NOTE]
 > `${oc.env:XXX,yyy}` means the value of the environment variable `XXX`. If the variable is not set, the default value `yyy` will be used.
 
@@ -122,11 +161,17 @@ source:
     category: null # The categories of target medrxiv papers. Find categories from [here](https://www.medrxiv.org/) Example: ["psychiatry and clinical psychology", "neurology"]
 
 email:
-  sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
-  receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
-  smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
-  smtp_port: ??? # The port of SMTP server. Example: 465
-  sender_password: ??? # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
+  sender: null # The email account of the SMTP server that sends you email. Required when executor.notifier=email. Example: abc@qq.com
+  receiver: null # The email account that receives the paper list. Required when executor.notifier=email. Example: abc@outlook.com
+  smtp_server: null # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
+  smtp_port: null # The port of SMTP server. Example: 465
+  sender_password: null # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
+
+telegram:
+  bot_token: null # Telegram bot token from @BotFather. Required when executor.notifier=telegram. Example: 123456:ABC-DEF...
+  chat_id: null # Telegram chat ID receiving the messages. Required when executor.notifier=telegram. Example: 123456789
+  parse_mode: HTML # Message parse mode (HTML or MarkdownV2). HTML is recommended.
+  disable_web_page_preview: true # Whether to suppress link previews in messages.
 
 llm:
   api:
@@ -153,19 +198,20 @@ reranker:
 
 executor:
   debug: false # Whether to use debug mode. Example: true
-  send_empty: false # Whether to send an empty email even if no new papers today. Example: true
-  max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
+  send_empty: false # Whether to send a notification even if no new papers today. Example: true
+  max_paper_num: 100 # The maximum number of the papers presented in the notification. Example: 100
   source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv']
   reranker: local # The reranker to use. Example: 'local' or 'api'
+  notifier: telegram # Where to send results. 'telegram' (default) or 'email'.
 ```
 
 That's all! Now you can test the workflow by manually triggering it:
 ![test](./assets/test.png)
 
 > [!NOTE]
-> The Test-Workflow Action is the debug version of the main workflow (Send-emails-daily), which always retrieve 5 arxiv papers regardless of the date. While the main workflow will be automatically triggered everyday and retrieve new papers released yesterday. There is no new arxiv paper at weekends and holiday, in which case you may see "No new papers found" in the log of main workflow.
+> The Test-Workflow Action is the debug version of the main workflow (Send paper digest daily), which always retrieve 5 arxiv papers regardless of the date. While the main workflow will be automatically triggered everyday and retrieve new papers released yesterday. There is no new arxiv paper at weekends and holiday, in which case you may see "No new papers found" in the log of main workflow.
 
-Then check the log and the receiver email after it finishes.
+Then check the log and your Telegram chat (or receiver email if you switched to `executor.notifier: email`) after it finishes.
 
 By default, the main workflow runs on 22:00 UTC everyday. You can change this time by editting the workflow config `.github/workflows/main.yml`.
 

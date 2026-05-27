@@ -7,10 +7,58 @@ from .protocol import CorpusPaper
 import random
 from datetime import datetime
 from .reranker import get_reranker_cls
-from .construct_email import render_email
-from .utils import send_email
+from .construct_email import render_email, render_telegram_messages
+from .utils import send_email, send_telegram
 from openai import OpenAI
 from tqdm import tqdm
+
+
+SUPPORTED_NOTIFIERS = ("telegram", "email")
+
+
+def _missing_required_fields(section, required: list[str]) -> list[str]:
+    missing = []
+    for key in required:
+        value = getattr(section, key, None)
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            missing.append(key)
+    return missing
+
+
+def validate_notifier_config(config: DictConfig) -> str:
+    """Return the active notifier name after validating its required fields.
+
+    Raises ``ValueError`` when the selected notifier is unknown or missing
+    required configuration. The check is intentionally per-notifier so users
+    only need to supply credentials for the channel they actually use.
+    """
+    notifier = getattr(config.executor, "notifier", "telegram") or "telegram"
+    notifier = notifier.lower()
+    if notifier not in SUPPORTED_NOTIFIERS:
+        raise ValueError(
+            f"Unknown executor.notifier '{notifier}'. Supported values: {SUPPORTED_NOTIFIERS}."
+        )
+
+    if notifier == "telegram":
+        missing = _missing_required_fields(config.telegram, ["bot_token", "chat_id"])
+        if missing:
+            raise ValueError(
+                "executor.notifier=telegram requires telegram."
+                + ", telegram.".join(missing)
+                + ". Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets, or switch executor.notifier to 'email'."
+            )
+    else:
+        missing = _missing_required_fields(
+            config.email,
+            ["sender", "receiver", "smtp_server", "smtp_port", "sender_password"],
+        )
+        if missing:
+            raise ValueError(
+                "executor.notifier=email requires email."
+                + ", email.".join(missing)
+                + ". Set the SENDER/RECEIVER/SENDER_PASSWORD/SMTP secrets, or switch executor.notifier to 'telegram'."
+            )
+    return notifier
 
 
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
@@ -32,6 +80,7 @@ def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key:
 class Executor:
     def __init__(self, config:DictConfig):
         self.config = config
+        self.notifier = validate_notifier_config(config)
         self.include_path_patterns = normalize_path_patterns(config.zotero.include_path, "include_path")
         self.ignore_path_patterns = normalize_path_patterns(config.zotero.ignore_path, "ignore_path")
         self.retrievers = {
@@ -116,9 +165,13 @@ class Executor:
                 p.generate_tldr(self.openai_client, self.config.llm)
                 p.generate_affiliations(self.openai_client, self.config.llm)
         elif not self.config.executor.send_empty:
-            logger.info("No new papers found. No email will be sent.")
+            logger.info(f"No new papers found. No {self.notifier} notification will be sent.")
             return
-        logger.info("Sending email...")
-        email_content = render_email(reranked_papers)
-        send_email(self.config, email_content)
-        logger.info("Email sent successfully")
+        logger.info(f"Sending notification via {self.notifier}...")
+        if self.notifier == "telegram":
+            messages = render_telegram_messages(reranked_papers)
+            send_telegram(self.config, messages)
+        else:
+            email_content = render_email(reranked_papers)
+            send_email(self.config, email_content)
+        logger.info(f"{self.notifier.capitalize()} notification sent successfully")

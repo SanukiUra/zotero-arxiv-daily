@@ -3,19 +3,33 @@ zotero:
   api_key: ${oc.env:ZOTERO_KEY}
   include_path: null # Or set a list of glob patterns, e.g. ["2026/survey/**","2026/reading-group/**"]
 
+# Telegram is the default notifier. Required only when executor.notifier=telegram.
+telegram:
+  bot_token: ${oc.env:TELEGRAM_BOT_TOKEN,null}
+  chat_id: ${oc.env:TELEGRAM_CHAT_ID,null}
+
+# Email is optional. Required only when executor.notifier=email.
 email:
-  sender: ${oc.env:SENDER}
-  receiver: ${oc.env:RECEIVER}
+  sender: ${oc.env:SENDER,null}
+  receiver: ${oc.env:RECEIVER,null}
   smtp_server: smtp.qq.com
   smtp_port: 465
-  sender_password: ${oc.env:SENDER_PASSWORD}
+  sender_password: ${oc.env:SENDER_PASSWORD,null}
 
 llm:
   api:
     key: ${oc.env:OPENAI_API_KEY}
     base_url: ${oc.env:OPENAI_API_BASE}
   generation_kwargs:
-    model: gpt-4o-mini
+    model: deepseek-v4-flash
+  language: Chinese
+
+reranker:
+  api:
+    key: ${oc.env:EMBED_API_KEY}
+    base_url: ${oc.env:EMBED_API_BASE,https://api.siliconflow.cn/v1}
+    model: ${oc.env:EMBED_MODEL,BAAI/bge-m3}
+    batch_size: 32
 
 source:
   arxiv:
@@ -24,3 +38,5 @@ source:
 executor:
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']
+  reranker: api # 'api' uses an OpenAI-compatible embeddings endpoint (no model download); 'local' uses sentence-transformers
+  notifier: telegram # 'telegram' (default) or 'email'
